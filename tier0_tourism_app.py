@@ -5,45 +5,48 @@ import plotly.express as px
 import folium
 from streamlit_folium import st_folium
 
-# --- 1. SETTINGS & ADVANCED UI STYLING ---
+# --- 1. CONFIG & SYSTEM CSS ---
 st.set_page_config(page_title="Resilience Scorecard Pro", layout="wide")
 
-# Custom CSS για το "Attractive Look"
 st.markdown("""
 <style>
-    /* Main Background & Font */
-    .stApp { background-color: #f4f7f9; }
+    /* Φόντο Dashboard */
+    .stApp { background-color: #0e1117; color: white; }
     
-    /* Header Style */
-    .report-header { 
-        background: linear-gradient(90deg, #0e1117 0%, #1c2a48 100%); 
-        color: white; padding: 30px; border-radius: 15px; 
-        text-align: center; margin-bottom: 25px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-        border-bottom: 4px solid #00d4ff;
-    }
-
-    /* Metric Cards */
-    .metric-card {
-        background: white; padding: 20px; border-radius: 12px;
-        border-top: 5px solid #00d4ff;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    /* Header Style - Dark & Professional */
+    .main-header {
+        background-color: #1c2a48;
+        padding: 20px;
+        border-radius: 10px;
         text-align: center;
+        border: 1px solid #00d4ff;
+        margin-bottom: 20px;
     }
-    .metric-value { font-size: 28px; font-weight: bold; color: #1c2a48; }
-    .metric-label { font-size: 14px; color: #666; text-transform: uppercase; }
+    .main-header h1 { color: #ffffff; margin-bottom: 5px; font-size: 24px; letter-spacing: 2px; }
+    .main-header p { color: #00d4ff; font-size: 14px; margin: 0; }
 
-    /* Variable Info Cards */
-    .var-card {
-        background: #ffffff; padding: 15px; border-radius: 10px;
-        border-left: 5px solid #1E50B4; margin-bottom: 10px;
-        transition: transform 0.2s;
+    /* Card Styling */
+    .content-card {
+        background-color: #161b22;
+        padding: 15px;
+        border-radius: 10px;
+        border: 1px solid #30363d;
+        height: 100%;
     }
-    .var-card:hover { transform: scale(1.02); }
+    
+    /* Stats Box Inside Cards */
+    .stat-val { font-size: 32px; font-weight: bold; color: #ffca28; }
+    .stat-lbl { font-size: 12px; color: #8b949e; text-transform: uppercase; }
 
-    /* Sidebar Dark Theme */
-    [data-testid="stSidebar"] { background-color: #0e1117; color: white; }
-    [data-testid="stSidebar"] * { color: white !important; }
+    /* Variable List Styling */
+    .var-item {
+        background: #0d1117;
+        padding: 10px;
+        border-radius: 5px;
+        border-left: 3px solid #00d4ff;
+        margin-bottom: 8px;
+        font-size: 13px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -59,16 +62,12 @@ mapping = {
     "Μύκονος": {"lat": 37.4467, "lon": 25.3289, "base_dem": 85.0, "pias": 0.72, "vib": 80.0, "sect": 0.50}
 }
 
-# --- 3. SIDEBAR (Dark Mode Settings) ---
+# --- 3. SIDEBAR (True Dark) ---
 with st.sidebar:
-    st.image("https://img.icons8.com/fluency/96/resilience.png", width=70)
-    st.markdown("## SETTINGS")
+    st.markdown("### ⚙️ SETTINGS")
+    selected_cities = st.multiselect("Municipalities:", options=list(mapping.keys()), default=list(mapping.keys()))
     st.markdown("---")
-    st.markdown("🔍 **SELECT MUNICIPALITIES**")
-    selected_cities = st.multiselect("", options=list(mapping.keys()), default=list(mapping.keys()), label_visibility="collapsed")
-    
-    st.markdown("<br><br>", unsafe_allow_html=True)
-    st.markdown("⚖️ **ALGORITHMIC MODEL**")
+    st.markdown("📊 **ALGORITHMIC MODEL**")
     st.caption("Shannon Entropy Weighting")
     st.caption("Everitt Empirical Classification")
 
@@ -83,54 +82,57 @@ if len(selected_cities) >= 2:
     df = pd.DataFrame(temp_data)
     mu, sigma = df["Score"].mean(), df["Score"].std()
     upper, lower = mu + (0.5 * sigma), mu - (0.5 * sigma)
-    
-    def get_status(x):
-        if x > upper: return "🟢 High (Safe)"
-        if x < lower: return "🔴 Low (Critical)"
-        return "🟡 Medium (Stable)"
-    
-    df["Status"] = df["Score"].apply(get_status)
+    df["Status"] = df["Score"].apply(lambda x: "🟢 High" if x > upper else ("🔴 Low" if x < lower else "🟡 Medium"))
     df = df.sort_values(by="Score", ascending=False)
 
-    # --- 5. MAIN DASHBOARD ---
+    # --- 5. DASHBOARD LAYOUT (GRID SYSTEM) ---
+    
+    # 5.1 HEADER
     st.markdown("""
-        <div class='report-header'>
+        <div class='main-header'>
             <h1>MUNICIPALITY TOURISM RESILIENCE SCORECARD</h1>
-            <p style='letter-spacing: 2px; opacity: 0.8;'>DATA-DRIVEN DECISIONS FOR SUSTAINABLE TOURISM</p>
+            <p>DATA-DRIVEN DECISIONS FOR SUSTAINABLE TOURISM</p>
         </div>
     """, unsafe_allow_html=True)
 
-    # 5.1 Metrics Row
-    c1, c2, c3 = st.columns(3)
-    with c1: st.markdown(f"<div class='metric-card'><div class='metric-label'>Mean Resilience (μ)</div><div class='metric-value'>{mu:.1f}</div></div>", unsafe_allow_html=True)
-    with c2: st.markdown(f"<div class='metric-card'><div class='metric-label'>Standard Deviation (σ)</div><div class='metric-value'>{sigma:.1f}</div></div>", unsafe_allow_html=True)
-    with c3: st.markdown(f"<div class='metric-card'><div class='metric-label'>Resilience Threshold</div><div class='metric-value' style='color:#00d4ff;'>{upper:.1f}</div></div>", unsafe_allow_html=True)
+    # 5.2 TOP ROW: METRICS & RANKING
+    row1_col1, row1_col2 = st.columns([3, 2])
 
-    # 5.2 Middle Section: Variable Analysis & Table
-    st.markdown("<br>", unsafe_allow_html=True)
-    col_left, col_right = st.columns([1, 1])
+    with row1_col1:
+        st.markdown("<div class='content-card'><b>📊 KEY RESILIENCE METRICS</b><br><br>", unsafe_allow_html=True)
+        m1, m2, m3 = st.columns(3)
+        m1.markdown(f"<div class='stat-lbl'>Mean (μ)</div><div class='stat-val'>{mu:.1f}</div>", unsafe_allow_html=True)
+        m2.markdown(f"<div class='stat-lbl'>Std Dev (σ)</div><div class='stat-val'>{sigma:.1f}</div>", unsafe_allow_html=True)
+        m3.markdown(f"<div class='stat-lbl'>Threshold</div><div class='stat-val' style='color:#00d4ff;'>{upper:.1f}</div>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    with col_left:
-        st.subheader("📊 Detailed Variable Analysis")
-        st.markdown(f"""
-            <div class='var-card'><b>ΠΕ1: Composite Index (Economic Base)</b><br>Measures core economic strength.</div>
-            <div class='var-card'><b>ΠΕ2: Vulnerability Index (NASA Vibrancy)</b><br>Uses night lights to measure local activity.</div>
-            <div class='var-card'><b>ΠΕ3: Policy Alignment (PIAS)</b><br>Checks if ESPA funding matches real needs.</div>
-            <div class='var-card'><b>ΠΕ4: Sectoral Network (NACE Rev.2)</b><br>Examines resilience to business shocks.</div>
+    with row1_col2:
+        st.markdown("<div class='content-card'><b>🏆 RESILIENCE RANKING</b>", unsafe_allow_html=True)
+        st.dataframe(df[["Δήμος", "Score", "Status"]], use_container_width=True, hide_index=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # 5.3 BOTTOM ROW: VARIABLES & MAP
+    row2_col1, row2_col2 = st.columns([3, 2])
+
+    with row2_col1:
+        st.markdown("""
+            <div class='content-card'>
+                <b>📘 DETAILED VARIABLE ANALYSIS</b><br><br>
+                <div class='var-item'><b>ΠΕ1: Composite Index</b> - Core economic strength analysis.</div>
+                <div class='var-item'><b>ΠΕ2: Vulnerability Index</b> - NASA Night Lights & Activity.</div>
+                <div class='var-item'><b>ΠΕ3: Policy Alignment</b> - ESPA Funding Similarity Score.</div>
+                <div class='var-item'><b>ΠΕ4: Sectoral Network</b> - Business cluster resilience.</div>
+            </div>
         """, unsafe_allow_html=True)
 
-    with col_right:
-        st.subheader("🏆 Resilience Ranking")
-        st.dataframe(df[["Δήμος", "Score", "Status"]], column_config={"Score": st.column_config.ProgressColumn("Score", min_value=0, max_value=100)}, use_container_width=True, hide_index=True)
-
-    # 5.3 Comparison & Map
-    st.divider()
-    st.subheader("📍 Geospatial Resilience Map")
-    m = folium.Map(location=[38.2, 24.2], zoom_start=6, tiles="CartoDB positron")
-    for _, r in df.iterrows():
-        color = "#28A745" if "High" in r["Status"] else "#FD7E14" if "Medium" in r["Status"] else "#DC3545"
-        folium.CircleMarker([r["Lat"], r["Lon"]], radius=15, color=color, fill=True, fill_opacity=0.8, popup=f"{r['Δήμος']}: {r['Score']}").add_to(m)
-    st_folium(m, width=1100, height=450)
+    with row2_col2:
+        st.markdown("<div class='content-card'><b>📍 GEOSPATIAL MAP</b>", unsafe_allow_html=True)
+        m = folium.Map(location=[38.2, 24.2], zoom_start=5, tiles="CartoDB dark_matter")
+        for _, r in df.iterrows():
+            color = "#28A745" if "High" in r["Status"] else "#FD7E14" if "Medium" in r["Status"] else "#DC3545"
+            folium.CircleMarker([r["Lat"], r["Lon"]], radius=10, color=color, fill=True).add_to(m)
+        st_folium(m, height=250, use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
 else:
-    st.info("⚠️ Please select municipalities from the Sidebar to activate the Scorecard.")
+    st.info("Please select municipalities.")
