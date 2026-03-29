@@ -45,4 +45,70 @@ if len(selected_cities) >= 2:
         temp_data.append({"Δήμος": name, "Lat": d["lat"], "Lon": d["lon"], "Score": score, "PIAS": d["pias"], "Demand": d["base_dem"], "Vibrancy": d["vib"]})
     
     df = pd.DataFrame(temp_data)
-    mu, sigma = df["
+    mu, sigma = df["Score"].mean(), df["Score"].std()
+    upper, lower = mu + (0.5 * sigma), mu - (0.5 * sigma)
+    df["Επίπεδο"] = df["Score"].apply(lambda x: "Υψηλό (Resilient)" if x > upper else ("Χαμηλό (Vulnerable)" if x < lower else "Μεσαίο (Stable)"))
+    df = df.sort_values(by="Score", ascending=False)
+
+    # --- 5. UI ---
+    st.markdown("<div class='report-header'><h1>Municipality Tourism Resilience Scorecard</h1></div>", unsafe_allow_html=True)
+
+    # Descriptive Summary Section
+    st.subheader("📝 Περιγραφική Ανάλυση Μεταβλητών")
+    c_desc1, c_desc2 = st.columns(2)
+    with c_desc1:
+        st.markdown(f"""
+        <div class='variable-box'>
+        <b>ΠΕ1: Σύνθετος Δείκτης (CI)</b><br>
+        Αναλύει το GVA και την απασχόληση. Χρησιμοποιείται για την αποτύπωση της οικονομικής βάσης του Δήμου.
+        </div>
+        <div class='variable-box'>
+        <b>ΠΕ2: Δείκτης Ευπάθειας (NASA Vibrancy)</b><br>
+        Συνδυάζει δεδομένα νυχτερινού φωτός και κινητικότητας για τη μέτρηση της 'ζωντάνιας' της τοπικής αγοράς.
+        </div>
+        """, unsafe_allow_html=True)
+    with c_desc2:
+        st.markdown(f"""
+        <div class='variable-box'>
+        <b>ΠΕ3: Policy Alignment (PIAS)</b><br>
+        Μετρά την ευθυγράμμιση των επενδύσεων ΕΣΠΑ με τις πραγματικές ανάγκες του Δήμου (Cosine Similarity).
+        </div>
+        <div class='variable-box'>
+        <b>ΠΕ4: Sectoral Network (NACE Rev.2)</b><br>
+        Εξετάζει την κλαδική συγκέντρωση και την αντοχή των τοπικών επιχειρήσεων σε εξωγενή σοκ.
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.write("---")
+    
+    # Stats Row
+    s1, s2, s3 = st.columns(3)
+    s1.markdown(f"<div class='stat-box'><b>Μέση Ανθεκτικότητα (μ)</b><br>{mu:.2f}</div>", unsafe_allow_html=True)
+    s2.markdown(f"<div class='stat-box'><b>Τυπική Απόκλιση (σ)</b><br>{sigma:.2f}</div>", unsafe_allow_html=True)
+    s3.markdown(f"<div class='stat-box'><b>Target Safe Zone</b><br>> {upper:.1f}</div>", unsafe_allow_html=True)
+
+    # Bar Chart
+    st.subheader("📊 Συγκριτικό Προφίλ (Top 3)")
+    comp_select = st.multiselect("Επιλογή για Radar-Style Bar Comparison:", options=selected_cities, default=selected_cities[:min(len(selected_cities), 3)], max_selections=3)
+    if comp_select:
+        b_data = []
+        for city in comp_select:
+            r = df[df["Δήμος"] == city].iloc[0]
+            for l, k in [('Overall Score', 'Score'), ('Policy Alignment', 'PIAS'), ('Vibrancy', 'Vibrancy')]:
+                v = r[k] * 100 if k == 'PIAS' else r[k]
+                b_data.append({"Δήμος": city, "Metric": l, "Val": v})
+        st.plotly_chart(px.bar(pd.DataFrame(b_data), x="Val", y="Metric", color="Δήμος", barmode="group", orientation='h', text_auto='.1f'), use_container_width=True)
+
+    # Ranking Table
+    st.subheader("🏆 Κατάταξη Ανθεκτικότητας")
+    st.dataframe(df[["Δήμος", "Score", "Επίπεδο", "PIAS"]], column_config={"Score": st.column_config.ProgressColumn("Resilience", min_value=0, max_value=100, format="%.1f")}, use_container_width=True, hide_index=True)
+
+    # Map
+    st.divider()
+    m = folium.Map(location=[38.2, 24.0], zoom_start=6, tiles="CartoDB positron")
+    for _, r in df.iterrows():
+        color = "#28A745" if "Υψηλό" in r["Επίπεδο"] else "#FD7E14" if "Μεσαίο" in r["Επίπεδο"] else "#DC3545"
+        folium.CircleMarker([r["Lat"], r["Lon"]], radius=14, color=color, fill=True, popup=f"{r['Δήμος']}: {r['Score']}").add_to(m)
+    st_folium(m, width=1100, height=450)
+else:
+    st.info("⚠️ Παρακαλώ επιλέξτε τουλάχιστον 2 Δήμους.")
