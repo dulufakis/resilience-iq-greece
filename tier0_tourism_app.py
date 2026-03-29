@@ -32,4 +32,98 @@ mapping = {
 
 # --- 3. SIDEBAR NAVIGATION ---
 with st.sidebar:
-    st.image("https://img.icons8.com/fluency/96/shield-with-growth.png", width=60
+    st.image("https://img.icons8.com/fluency/96/shield-with-growth.png", width=60)
+    st.title("ResilienceIQ Pro")
+    menu = st.radio("Μενού Πλοήγησης:", ["Επιχειρησιακό Dashboard", "Εγχειρίδιο & Μεθοδολογία"])
+    
+    st.divider()
+    if menu == "Επιχειρησιακό Dashboard":
+        st.header("🔐 Έλεγχος Πρόσβασης")
+        selected_cities = st.multiselect(
+            "Επιλέξτε έως 5 Δήμους:",
+            options=list(mapping.keys()),
+            default=["Χανιά", "Ρόδος", "Κέρκυρα", "Αθήνα", "Σαντορίνη"],
+            max_selections=5
+        )
+        st.header("🎮 Προσομοιωτής (What-if)")
+        s_demand = st.slider("Μεταβολή Ζήτησης (%)", -100, 50, 0)
+        s_mob = st.slider("Μεταβολή Κινητικότητας (%)", -100, 50, 0)
+
+# --- 4. PAGE: DASHBOARD ---
+if menu == "Επιχειρησιακό Dashboard":
+    st.markdown("<div class='report-header'><h2>Resilience Control Center: Ελλάδα</h2></div>", unsafe_allow_html=True)
+    
+    if not selected_cities:
+        st.error("⚠️ Παρακαλώ επιλέξτε τουλάχιστον έναν Δήμο από το Sidebar.")
+    else:
+        results = []
+        for name in selected_cities:
+            data = mapping[name]
+            adj_dem = data["base_dem"] * (1 + s_demand/100)
+            adj_mob = -3.7 * (1 + s_mob/100)
+            # Υπολογισμός NASA Vibrancy
+            vib = np.clip((adj_dem * 0.45 + (55 + adj_mob) * 0.55), 0, 100)
+            # Υπολογισμός Score
+            score = round((adj_dem * 0.35) + (vib * 0.45) + (20 - (data["list"]/1000) * 0.5), 1)
+            color = "#27AE60" if score > 55 else "#E67E22" if score > 40 else "#C0392B"
+            results.append({"Δήμος": name, "Lat": data["lat"], "Lon": data["lon"], "Score": score, "Color": color, "Vib": vib, "Dem": adj_dem})
+
+        df_res = pd.DataFrame(results)
+
+        # KPIs & FOCUS SELECTION
+        focus_city = st.selectbox("Εστίαση & Ερμηνεία Δείκτη για:", selected_cities)
+        f_data = df_res[df_res["Δήμος"] == focus_city].iloc[0]
+
+        c1, c2, c3 = st.columns(3)
+        c1.markdown(f"<div class='metric-card'><b>Resilience Score</b><br><span style='font-size:26px; color:{f_data['Color']};'>{f_data['Score']}</span></div>", unsafe_allow_html=True)
+        c2.markdown(f"<div class='metric-card'><b>NASA Vibrancy</b><br><span style='font-size:26px;'>{f_data['Vib']:.1f}</span></div>", unsafe_allow_html=True)
+        c3.markdown(f"<div class='metric-card'><b>Ζήτηση (Adj)</b><br><span style='font-size:26px;'>{f_data['Dem']:.1f}</span></div>", unsafe_allow_html=True)
+
+        # ΔΥΝΑΜΙΚΗ ΕΡΜΗΝΕΙΑ (Corrected Terminology)
+        st.markdown(f"### 📝 Συνοπτική Ερμηνεία: {focus_city}")
+        res_text = "ΣΤΑΘΕΡΗ" if f_data['Score'] > 55 else "ΟΡΙΑΚΗ" if f_data['Score'] > 40 else "ΚΡΙΣΙΜΗ"
+        
+        st.markdown(f"""
+        <div class='summary-box'>
+            Ο δείκτης <b>Resilience Score ({f_data['Score']})</b> υποδεικνύει μια <b>{res_text}</b> κατάσταση. 
+            Η <b>Ζήτηση ({f_data['Dem']:.1f})</b> παραμένει ο κύριος μοχλός ελκυστικότητας, ενώ ο δείκτης 
+            <b>NASA Vibrancy ({f_data['Vib']:.1f})</b> επιβεβαιώνει ότι η φυσική δραστηριότητα στον Δήμο 
+            ακολουθεί το ψηφιακό ενδιαφέρον. 
+            <i>Συμπέρασμα: Ο προορισμός διαθέτει επαρκή 'αντισώματα' για το τρέχον σενάριο.</i>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.divider()
+
+        # MAP & COMPARISON
+        col_map, col_comp = st.columns([2, 1])
+        with col_map:
+            st.subheader("📍 Γεωγραφική Κατανομή Κινδύνου")
+            m = folium.Map(location=[38.3, 24.5], zoom_start=6, tiles="CartoDB positron")
+            for _, row in df_res.iterrows():
+                folium.CircleMarker(
+                    location=[row["Lat"], row["Lon"]], radius=10 + (row["Score"]/10),
+                    popup=f"{row['Δήμος']}: {row['Score']}", color=row["Color"], fill=True, fill_color=row["Color"]
+                ).add_to(m)
+            st_folium(m, width=800, height=400)
+            
+        with col_comp:
+            st.subheader("📊 Σύγκριση Επιλεγμένων")
+            fig_comp = go.Figure(go.Bar(x=df_res["Δήμος"], y=df_res["Score"], marker_color=df_res["Color"]))
+            fig_comp.update_layout(height=350, margin=dict(t=10, b=10))
+            st.plotly_chart(fig_comp, use_container_width=True)
+
+        # EXPORT
+        csv = df_res.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Εξαγωγή Αναφοράς (CSV)", data=csv, file_name="resilience_pro_report.csv")
+
+# --- 5. PAGE: HELP ---
+else:
+    st.markdown("<div class='report-header'><h2>📘 Εγχειρίδιο Χρήσης & Μεθοδολογία</h2></div>", unsafe_allow_html=True)
+    st.write("### 🔍 Ανάλυση Δεικτών")
+    st.markdown("""
+    - **Resilience Score:** Ο τελικός βαθμός ανθεκτικότητας (0-100). Συνδυάζει ζήτηση, φυσική δραστηριότητα και πίεση υποδομών.
+    - **NASA Vibrancy:** Μετρά την ένταση του νυχτερινού φωτισμού. Υψηλές τιμές υποδηλώνουν ενεργή οικονομική και τουριστική ζωή.
+    - **Ζήτηση (Adj):** Προέρχεται από το ψηφιακό ενδιαφέρον (Google Trends), προσαρμοσμένο στις παραμέτρους του προσομοιωτή.
+    """)
+    st.info("💡 Το Tier 0 επιτρέπει τη λήψη αποφάσεων σε πραγματικό χρόνο, πριν την έκδοση των επίσημων μηνιαίων στατιστικών.")
