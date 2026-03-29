@@ -5,7 +5,7 @@ import plotly.express as px
 import folium
 from streamlit_folium import st_folium
 
-# --- 1. CONFIG & STYLES ---
+# --- 1. SETTINGS & STYLES ---
 st.set_page_config(page_title="ResilienceIQ Modern", layout="wide")
 
 st.markdown("""
@@ -37,18 +37,96 @@ with st.sidebar:
         default=["Χανιά", "Ρόδος", "Αθήνα"]
     )
 
-# --- 4. CALCULATIONS ---
+# --- 4. CALCULATIONS & MAIN PAGE ---
 if not selected_cities:
-    st.warning("⚠️ Επιλέξτε Δήμους από το Sidebar.")
+    st.warning("⚠️ Παρακαλώ επιλέξτε τουλάχιστον έναν Δήμο από το Sidebar.")
 else:
     results = []
     for name in selected_cities:
         d = mapping[name]
+        # Weighted Score Logic
         score = round((d["base_dem"] * 0.25) + (d["pias"] * 55) + (d["vib"] * 0.20), 1)
         status = "Safe" if score > 72 else "Warning" if score > 58 else "Critical"
         results.append({
-            "Δήμος": name, "Lat": d["lat"], "Lon": d["lon"], 
-            "Resilience Score": score, "Κατάσταση": status,
-            "PIAS": d["pias"], "Demand": d["base_dem"], "Vibrancy": d["vib"], "Sectoral": d["sect"]
+            "Δήμος": name, 
+            "Lat": d["lat"], 
+            "Lon": d["lon"], 
+            "Resilience Score": score, 
+            "Κατάσταση": status,
+            "PIAS": d["pias"], 
+            "Demand": d["base_dem"], 
+            "Vibrancy": d["vib"], 
+            "Sectoral": d["sect"]
         })
-    df_res = pd.DataFrame(results).sort_values(by="
+    
+    # Εδώ ήταν το σφάλμα - τώρα είναι διορθωμένο:
+    df_res = pd.DataFrame(results).sort_values(by="Resilience Score", ascending=False)
+
+    st.markdown("<div class='report-header'><h2>Resilience Control Center v5.1</h2></div>", unsafe_allow_html=True)
+
+    # --- SECTION A: COMPARATIVE BARS ---
+    st.subheader("📊 Συγκριτική Ανάλυση Μεταβλητών (Έως 3 Δήμοι)")
+    comp_selection = st.multiselect(
+        "Επιλέξτε για σύγκριση:", 
+        options=selected_cities, 
+        default=selected_cities[:min(len(selected_cities), 3)], 
+        max_selections=3
+    )
+    
+    if comp_selection:
+        plot_data = []
+        labels = {
+            'Resilience Score': 'Συνολικό Score', 
+            'Demand': 'Ψηφιακή Ζήτηση', 
+            'PIAS': 'Στρατηγική ΕΣΠΑ', 
+            'Sectoral': 'Κλαδική Συνοχή', 
+            'Vibrancy': 'Vibrancy (NASA)'
+        }
+        for city in comp_selection:
+            c = df_res[df_res["Δήμος"] == city].iloc[0]
+            for key, lab in labels.items():
+                val = c[key] * 100 if key in ['PIAS', 'Sectoral'] else c[key]
+                plot_data.append({"Δήμος": city, "Μεταβλητή": lab, "Value": val})
+        
+        fig = px.bar(
+            pd.DataFrame(plot_data), 
+            x="Value", y="Μεταβλητή", 
+            color="Δήμος", barmode="group", 
+            orientation='h', text_auto='.1f', 
+            color_discrete_sequence=px.colors.qualitative.Vivid
+        )
+        fig.update_layout(xaxis_title="Score (0-100)", yaxis_title="", height=400, margin=dict(l=0, r=0, t=30, b=0))
+        st.plotly_chart(fig, use_container_width=True)
+
+    # --- SECTION B: RANKING TABLE ---
+    st.subheader("🏆 Κατάταξη & Επιδόσεις")
+    st.dataframe(
+        df_res[["Δήμος", "Resilience Score", "Κατάσταση", "PIAS"]],
+        column_config={
+            "Resilience Score": st.column_config.ProgressColumn("Score", format="%.1f", min_value=0, max_value=100),
+            "PIAS": st.column_config.NumberColumn("Alignment", format="%.2f"),
+            "Κατάσταση": st.column_config.TextColumn("Status")
+        },
+        use_container_width=True, hide_index=True
+    )
+
+    # --- SECTION C: GEOSPATIAL MAP ---
+    st.divider()
+    st.subheader("📍 Γεωγραφική Διασπορά")
+    m = folium.Map(location=[38.0, 24.0], zoom_start=6, tiles="CartoDB positron")
+    for _, r in df_res.iterrows():
+        # Δυναμικό χρώμα marker βάσει score
+        color = "#27AE60" if r["Resilience Score"] > 72 else "#E67E22" if r["Resilience Score"] > 58 else "#C0392B"
+        folium.CircleMarker(
+            [r["Lat"], r["Lon"]], 
+            radius=12, 
+            color=color, 
+            fill=True, 
+            popup=f"{r['Δήμος']}: {r['Resilience Score']}"
+        ).add_to(m)
+    st_folium(m, width=1100, height=450)
+
+    # --- SECTION D: METHODOLOGY ---
+    with st.expander("🔍 Μεθοδολογία & Μεταβλητές"):
+        st.write("**ΠΕ1/ΠΕ2:** Οικονομική βάση (GVA/EMP) & NASA Night Lights (Vibrancy).")
+        st.write("**ΠΕ3/ΠΕ4:** Cosine Similarity (PIAS) & NACE Imputation Strategy.")
